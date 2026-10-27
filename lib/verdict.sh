@@ -79,9 +79,9 @@ verdict_summary() {
   case "$V_STATE" in
     OK)
       if [ "$V_QF_HELPER" = "ok" ] || [ "$V_QF" = "ok" ]; then
-        echo "✅ 链路正常（注意：QuickFox 正开着，会接管 DNS 和公网出口，可以关掉）"
+        echo "✅ 链路正常（顺便：QuickFox 正开着，会接管 DNS 和公网出口；如非必要建议关掉）"
       else
-        echo "✅ 链路正常，只需要 beyond，不需要 QuickFox"
+        echo "✅ 链路正常，只需要 beyond"
       fi
       ;;
     JUMP_DOWN)
@@ -91,7 +91,7 @@ verdict_summary() {
       echo "❌ 故障 B：beyond 隧道进程/网卡不在了 → 重启 beyond App 并确认 sudo 授权（QuickFox 没用）"
       ;;
     RELAY_UNREACHABLE)
-      echo "⚠️  故障 A：beyond 中转节点 ${NJU_RELAY_IP}:${NJU_RELAY_PORT} 不可达 → 开 QuickFox 当 beyond 的底层出口"
+      echo "⚠️  故障 A：beyond 中转节点 ${NJU_RELAY_IP}:${NJU_RELAY_PORT} 不可达"
       ;;
     TUNNEL_STALLED)
       echo "⚠️  中转节点通但目标不通 → 可能是 NJU 侧机器/路由问题，或隧道处于假连接状态，尝试重连 beyond"
@@ -102,10 +102,10 @@ verdict_summary() {
 verdict_actions() {
   case "$V_STATE" in
     OK)                 echo "无需操作" ;;
-    JUMP_DOWN)          echo "1) 检查本机网络  2) ping/ssh ${NJU_JUMP_HOST}  3) 检查本机 Tailscale/路由" ;;
+    JUMP_DOWN)          echo "1) 检查本机网络  2) ping/ssh ${NJU_JUMP_HOST}  3) 检查本机路由" ;;
     TUNNEL_DEAD)        echo "open -a ${NJU_BEYOND_APP}  # 然后在 App 里点连接，允许 sudo 授权" ;;
-    RELAY_UNREACHABLE)  echo "open -a ${NJU_QUICKFOX_APP}  # 等 QuickFox 连上后复测" ;;
-    TUNNEL_STALLED)     echo "在 beyond App 里断开重连；若仍不通，检查 NJU 侧 172.16.66.158 是否在线" ;;
+    RELAY_UNREACHABLE)  echo "./bin/doctor.sh --fix  # 先重启 beyond；仍不通才提示 QuickFox（默认不自动开）" ;;
+    TUNNEL_STALLED)     echo "在 beyond App 里断开重连；若仍不通，检查 NJU 侧 ${NJU_TARGET_IP} 是否在线" ;;
   esac
 }
 

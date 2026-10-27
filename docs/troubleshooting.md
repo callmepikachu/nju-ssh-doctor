@@ -202,3 +202,23 @@ QuickFox 接管了 DNS，本机一些依赖域名解析的工具会受影响。
 | 跳板不可达 | 连 `macmini` 都 ssh 失败 | 与本故障无关，先修本机网络 |
 
 「两个 VPN 都开着才通」不是常态，而是 A 类故障下的临时状态。正常情况只需要 beyond。`bin/doctor.sh` 就是把这个判断固化成可执行的检查。
+## 第八轮补充：QuickFox 策略改为「如无必要不开」
+
+最初版本让 `--fix` 在 A 类故障时直接启 QuickFox，并且开着不关。实际使用后发现两个问题：
+
+1. QuickFox 会接管 DNS，`curl https://api.ipify.org` 直接 `Resolving timed out`，影响本机其它工具。
+2. 它和 beyond 的路由会互相干扰，长时间共存状态不稳定。
+
+于是修正策略（用户要求）：
+
+- **默认 `NJU_ENABLE_QUICKFOX=0`**，`--fix` 遇到 A 类故障先只重启 beyond
+- 只有显式设 `NJU_ENABLE_QUICKFOX=1` 才临时启用，最多等 30 秒
+- 链路恢复后立即 `quickfox_stop` 关掉主 App
+- 用户手动开的 QuickFox，doctor 不碰（用 state 文件区分）
+
+验证：
+
+```
+$ ./bin/doctor.sh --quickfox-off        # 无 mark 时
+  [跳过] QuickFox 不是 doctor 启动的，不动它
+```

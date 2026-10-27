@@ -22,8 +22,9 @@
 # 探测超时（秒），必须比 ssh ConnectTimeout 短
 : "${NJU_CONNECT_TIMEOUT:=5}"
 
-# 可选：把 QuickFox 当作 beyond 的底层出口
-: "${NJU_ENABLE_QUICKFOX:=1}"
+# QuickFox 默认关闭：它接管 DNS 和公网出口，有副作用。
+# doctor 只在故障 A 且「重启 beyond 无效」时才会用到它；即使启用，也是用完即关。
+: "${NJU_ENABLE_QUICKFOX:=0}"
 : "${NJU_QUICKFOX_APP:=/Applications/QuickFox.app}"
 
 # 可选：把 beyond 的 App 路径（重启时用）

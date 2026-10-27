@@ -3,9 +3,10 @@
 #
 # 用法:
 #   doctor.sh                 诊断（通过 ssh 到跳板）
-#   doctor.sh --fix           诊断 + 自动修复
+#   doctor.sh --fix           诊断 + 自动修复（优先重启 beyond，不轻易开 QuickFox）
 #   doctor.sh --json          机器可读输出
 #   doctor.sh --local         在跳板机本机运行（不经过 ssh）
+#   doctor.sh --quickfox-off  关闭 doctor 之前临时启动的 QuickFox
 #   doctor.sh --jump <host>   指定跳板，默认 macmini
 #   doctor.sh --target <host> 指定目标，默认 NJU-vscode
 #   doctor.sh --help
@@ -18,19 +19,20 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "${SELF_DIR}/.." && pwd)"
 
 # ---- 参数 ----
-MODE="diagnose"
 FIX=0
 JSON=0
 LOCAL=0
+QF_OFF=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --fix)    FIX=1 ;;
-    --json)   JSON=1 ;;
-    --local)  LOCAL=1 ;;
-    --jump)   NJU_JUMP_HOST="${2:?--jump 需要参数}"; shift ;;
-    --target) NJU_TARGET_HOST="${2:?--target 需要参数}"; shift ;;
+    --fix)         FIX=1 ;;
+    --json)        JSON=1 ;;
+    --local)       LOCAL=1 ;;
+    --quickfox-off) QF_OFF=1 ;;
+    --jump)        NJU_JUMP_HOST="${2:?--jump 需要参数}"; shift ;;
+    --target)      NJU_TARGET_HOST="${2:?--target 需要参数}"; shift ;;
     --help|-h)
-      sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 3 ;;
   esac
@@ -56,11 +58,17 @@ done
 . "${ROOT_DIR}/lib/verdict.sh"
 . "${ROOT_DIR}/lib/fix.sh"
 
-# --local：在跳板上直接跑，把 NJU_JUMP_HOST 改成空，所有 jump_exec 直连本机
+# --local：在跳板上直接跑；所有 jump_exec 直连本机
 if [ "$LOCAL" = "1" ]; then
   NJU_JUMP_HOST="local"
   probe_jump_reachable() { return 0; }
   jump_exec() { bash -c "$1" 2>/dev/null; }
+fi
+
+# ---- --quickfox-off：只做收尾，不探测 ----
+if [ "$QF_OFF" = "1" ]; then
+  quickfox_stop "$NJU_JUMP_HOST"
+  exit 0
 fi
 
 # ---- 主流程 ----
@@ -74,14 +82,26 @@ fi
 
 # ---- 修复 ----
 if [ "$FIX" = "1" ]; then
-  case "$V_STATE" in
-    RELAY_UNREACHABLE) fix_relay_unreachable "$NJU_JUMP_HOST" ;;
-    TUNNEL_DEAD)       fix_tunnel_dead "$NJU_JUMP_HOST" ;;
-  esac
   echo
-  echo ">>> 修复后复测："
+  echo ">>> 开始修复"
+  fixed=1
+  case "$V_STATE" in
+    RELAY_UNREACHABLE) fix_relay_unreachable "$NJU_JUMP_HOST" || fixed=0 ;;
+    TUNNEL_DEAD)       fix_tunnel_dead "$NJU_JUMP_HOST" || fixed=0 ;;
+    OK)                echo "  链路已正常，无需修复" ;;
+    *)                 echo "  该状态没有自动修复动作，请按建议手动处理" ;;
+  esac
+
+  echo
+  echo ">>> 修复后复测"
   verdict_run
   if [ "$JSON" = "1" ]; then verdict_json; else verdict_print; fi
+
+  # 链路恢复后，把 doctor 自己开过的 QuickFox 关回去（如无必要不开）
+  if [ "$V_STATE" = "OK" ] && qf_started_by_doctor; then
+    echo
+    quickfox_stop "$NJU_JUMP_HOST"
+  fi
 fi
 
 exit "$(verdict_exit_code)"

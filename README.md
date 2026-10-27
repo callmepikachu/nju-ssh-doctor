@@ -11,7 +11,7 @@
 ┌──────────────┐     ssh macmini       ┌────────────────────────┐    beyond    ┌────────────────┐
 │ ssh NJU-vscode│──────────────────────▶│ 10.127.124.33:22       │──────────────▶│ 172.16.66.158:22│
 └──────────────┘                       │   └─ ProxyJump 到 utun4 │  utun4 100.64.0.249  └────────────────┘
-                                       │      QuickFox (可选底层) │
+                                       │   QuickFox (救急才用，用完即关) │
                                        └────────────────────────┘
 ```
 
@@ -21,14 +21,31 @@
 
 | 故障 | 症状 | 根因 | 修复 |
 |---|---|---|---|
-| **A. 中转节点不可达** | `utun4` 还在、路由还在；`43.242.74.145:51820` 超时；`172.16.66.158:22` 超时 | beyond 的节点 IP 被墙/过载；客户端不会自动 fallback | 用 QuickFox 给 beyond 的底层流量开一条出口 |
+| **A. 中转节点不可达** | `utun4` 还在、路由还在；`43.242.74.145:51820` 超时；`172.16.66.158:22` 超时 | beyond 的节点 IP 被墙/过载；客户端不会自动 fallback | 先重启 beyond 重握手；仍不通才临时用 QuickFox，恢复后立刻关掉 |
 | **B. 隧道进程死亡** | 连 `utun4` 都没有；日志持续输出 `隧道进程未运行` | beyond App 重启后 root 隧道子进程没被 sudo-prompt 拉起 | 重启 beyond App 并确认 sudo 授权；QuickFox 救不了 |
 
 **判断口诀**：先看 `utun4` 在不在，再看 `43.242.74.145:51820` 通不通，最后看 `172.16.66.158:22` 通不通。
 
 - `utun4` 不在 → B 类，重启 App
-- `utun4` 在但节点超时 → A 类，开 QuickFox 当底层出口
-- 目标通 → 正常，不要开 QuickFox（QuickFox 会接管 DNS 和公网出口，有副作用）
+- `utun4` 在但节点超时 → A 类，先重启 beyond；仍不通才考虑 QuickFox
+- 目标通 → 正常，**不要开 QuickFox**（它会接管 DNS 和公网出口，有副作用）
+
+### QuickFox 策略：如无必要不开
+
+QuickFox 在本链路里不是「第二个 VPN」，而是 beyond 的**底层传输出口**。它能救 A 类故障，但代价是：
+
+- 接管 DNS → 本机域名解析可能超时
+- 公网出口整体变慢
+- 长时间开着容易和 beyond 的路由互相干扰
+
+所以本项目默认 `NJU_ENABLE_QUICKFOX=0`：
+
+1. `--fix` 遇到 A 类故障，**先只重启 beyond**（多数情况到此就好）
+2. 仍不通才提示你可以开 QuickFox，但**不会自动开**
+3. 你若显式设 `NJU_ENABLE_QUICKFOX=1`，doctor 会临时开它，最多等 30 秒；**链路一恢复就自动关掉**
+4. 用户自己手动开的 QuickFox，doctor 一律不动
+
+`bin/doctor.sh --quickfox-off` 可以单独执行「关闭 doctor 开过的 QuickFox」。
 
 ## 用法
 
@@ -36,7 +53,8 @@
 
 ```bash
 ./bin/doctor.sh                 # 一键诊断，输出状态表和结论
-./bin/doctor.sh --fix            # 诊断 + 自动修复（A 类自动启 QuickFox，B 类提示重启）
+./bin/doctor.sh --fix            # 诊断 + 自动修复（优先重启 beyond，不轻易开 QuickFox）
+./bin/doctor.sh --quickfox-off   # 关闭 doctor 之前临时启动的 QuickFox
 ./bin/doctor.sh --json           # 机器可读输出，方便接别的监控
 ./bin/doctor.sh --jump macmini --target NJU-vscode
 ```
@@ -65,7 +83,7 @@ NJU 目标        ✅ 172.16.66.158:22  (RTT -)
 ssh aliased     ✅ ssh NJU-vscode 可用
 QuickFox        ⚠️  正在运行（接管 DNS/出口）
 ----------------------------------------------
-✅ 链路正常（注意：QuickFox 正开着，会接管 DNS 和公网出口，可以关掉）
+✅ 链路正常（顺便：QuickFox 正开着，会接管 DNS 和公网出口；如非必要建议关掉）
 → 建议: 无需操作
 ==============================================
 ```
@@ -78,7 +96,7 @@ cp launchd/com.callmepikachu.nju-ssh-doctor.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.callmepikachu.nju-ssh-doctor.plist
 ```
 
-每 5 分钟跑一次 `bin/watchdog.sh`：正常时安静退出；故障 A 自动启 QuickFox；故障 B 自动重启 beyond App。日志在 `~/Library/Logs/nju-ssh-doctor.log`。
+每 5 分钟跑一次 `bin/watchdog.sh`：正常时安静退出；故障 A 先尝试重启 beyond（开 QuickFox 需显式 `NJU_ENABLE_QUICKFOX=1`，且恢复后会关掉）；故障 B 自动重启 beyond App。日志在 `~/Library/Logs/nju-ssh-doctor.log`。
 
 ## 测试
 
@@ -116,7 +134,7 @@ NJU_JUMP_HOST=macmini           # 跳板别名
 NJU_TARGET_HOST=NJU-vscode      # 目标别名
 NJU_RELAY_IP=43.242.74.145      # beyond 中转节点（换节点时改这里）
 NJU_TUN_ADDR=100.64.0.249       # utun4 地址
-NJU_ENABLE_QUICKFOX=1           # 0 表示不自动启 QuickFox
+NJU_ENABLE_QUICKFOX=0           # 默认 0；设为 1 才允许 --fix 临时启用 QuickFox
 ```
 
 也可以写在 `~/.config/nju-ssh-doctor/config.sh`，优先级高于仓库里的 `examples/config.sh`。
@@ -125,7 +143,8 @@ NJU_ENABLE_QUICKFOX=1           # 0 表示不自动启 QuickFox
 
 - relay IP 是硬编码的默认值；beyond 换节点后需要改配置（不会自动从日志里抓）。
 - `--fix` 对故障 B 只能拉起 App，sudo 授权仍需人工确认。
-- QuickFox 接管 DNS 会影响本机其它依赖域名解析的工具；恢复后建议关掉。
+- QuickFox 接管 DNS 会影响本机其它依赖域名解析的工具；因此默认不自动启用，启用后也会用完即关。
+- `quickfox_stop` 只退出 QuickFox 主 App，不主动杀 root 助手 `com.quickfox.tund`（避免误伤用户手动开的实例）。
 - 只覆盖 macOS；Linux 下 `nc -G` / `ifconfig utun4` 的行为不同。
 
 ## 为什么不是一个大而全的脚本

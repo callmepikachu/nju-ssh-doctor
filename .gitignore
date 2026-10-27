@@ -5,3 +5,6 @@
 *.log
 .env
 config.local.sh
+
+# doctor 的本地 state（记录临时开过 QuickFox）
+.cache/
