@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  每 5 分钟体检一次。安装：
+    cp launchd/com.callmepikachu.nju-ssh-doctor.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.callmepikachu.nju-ssh-doctor.plist
+  卸载：
+    launchctl unload ~/Library/LaunchAgents/com.callmepikachu.nju-ssh-doctor.plist
+
+  注意：把 REPO_PATH 改成你 clone 的路径。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.callmepikachu.nju-ssh-doctor</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>REPO_PATH/bin/watchdog.sh</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/nju-ssh-doctor.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/nju-ssh-doctor.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+</dict>
+</plist>

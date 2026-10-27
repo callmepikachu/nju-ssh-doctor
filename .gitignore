@@ -1,0 +1,7 @@
+# macOS
+.DS_Store
+
+# 日志与本地配置
+*.log
+.env
+config.local.sh
